@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HistoryBox</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f2f4f6;--panel:#e5eaee;--paper:#fbfcfd;--ink:#17212b;--mute:#566371;--acc:#0e6e68;--on:#fff;--line:#c6cfd8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e151c;--panel:#141d26;--paper:#111a22;--ink:#e4eaf0;--mute:#93a1af;--acc:#5fc4b9;--on:#07201d;--line:#26333f}}
+:root[data-theme="dark"]{--bg:#0e151c;--panel:#141d26;--paper:#111a22;--ink:#e4eaf0;--mute:#93a1af;--acc:#5fc4b9;--on:#07201d;--line:#26333f}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Instrument Sans",system-ui,sans-serif}
+.app{display:grid;gap:1.5rem;max-width:1180px;margin:0 auto;padding:1.25rem}
+@media(min-width:880px){.app{grid-template-columns:320px 1fr;align-items:start;padding:2rem}.panel{position:sticky;top:1rem}}
+.panel{background:var(--panel);border-radius:14px;padding:1.4rem}
+h1{font:600 1.55rem/1.15 "Newsreader",Georgia,serif;margin:0 0 .5rem}
+.lead{margin:0 0 1.2rem;color:var(--mute);font-size:.92rem}
+fieldset{border:0;padding:0;margin:0 0 1.1rem}
+legend{font-weight:600;font-size:.9rem;margin-bottom:.45rem;padding:0}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem}
+.chips input{position:absolute;opacity:0;pointer-events:none}
+.chips label{padding:.4rem .8rem;border:1px solid var(--line);border-radius:99px;cursor:pointer;font-size:.9rem;background:var(--paper)}
+.chips input:checked+label{background:var(--acc);color:var(--on);border-color:var(--acc)}
+.chips input:focus-visible+label,button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{font:600 .92rem "Instrument Sans",sans-serif;border-radius:10px;border:1px solid var(--acc);padding:.6rem 1rem;cursor:pointer;background:transparent;color:var(--ink)}
+button.main{background:var(--acc);color:var(--on);width:100%;padding:.8rem;font-size:1rem}
+.seed{font-size:.8rem;color:var(--mute);margin:.7rem 0 0}
+.reader{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:clamp(1.2rem,4vw,3rem);min-width:0}
+.reader h2.t{font:600 clamp(2rem,5vw,3.1rem)/1.08 "Newsreader",Georgia,serif;margin:0 0 .4rem;letter-spacing:-.01em}
+.meta{color:var(--mute);margin:0 0 1rem}
+.tools{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 2rem;padding-bottom:1.4rem;border-bottom:1px solid var(--line)}
+.sec{margin:0 0 2rem;max-width:64ch}
+.sec h3{font:italic 400 1.5rem "Newsreader",Georgia,serif;color:var(--acc);margin:0 0 .6rem}
+.sec h3 span{display:block;font:600 .8rem "Instrument Sans",sans-serif;color:var(--mute);margin-bottom:.1rem}
+.sec p{font:400 1.14rem/1.75 "Newsreader",Georgia,serif;margin:0 0 1rem}
+.sec.pro p{font-style:italic}
+#toast{position:fixed;left:50%;bottom:calc(1rem + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:10px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+.prog{color:var(--mute);margin:-1rem 0 1.6rem;min-height:1.5em}.empty{color:var(--mute)}button:disabled{opacity:.45;cursor:default}[hidden]{display:none!important}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="app">
+<aside class="panel">
+<h1>HistoryBox</h1>
+<fieldset><legend>Género</legend><div class="chips" id="gen"></div></fieldset>
+<fieldset><legend>Época</legend><div class="chips" id="era"></div></fieldset>
+<fieldset><legend>Narrador</legend><div class="chips" id="nar"></div></fieldset>
+<fieldset><legend>Crudeza</legend><div class="chips" id="cru"></div></fieldset>
+<fieldset><legend>Extensión</legend><div class="chips" id="ext"></div></fieldset>
+<button class="main" id="go">Crear historia</button>
+</aside>
+<main class="reader" id="out" aria-live="polite"></main>
+</div>
+<div id="toast" role="status"></div>
+<script>
+const WL=[["guardaba un rencor viejo contra su propio padre","perdonar"],["había abandonado a un amigo en el peor momento","no volver a abandonar a nadie"],["no volvía a confiar en nadie desde una traición","confiar otra vez"],["huía de un pasado que no se atrevía a nombrar","mirar de frente ese pasado"],["nunca terminaba nada de lo que empezaba","terminar por fin lo que empezaba"]];
+const INTRO=["{AMB} {P} era {R} de {H} y {W}.","{AMB} En {H}, {P} trabajaba como {Rb}. Nadie sospechaba que {W}.","{AMB} {P}, {R}, llevaba una vida tranquila en {H}, aunque en el fondo {W}."];
+const FORE=["Esta es la historia de {P}, de lo que encontró en {L} y de lo que le costó.","Nadie sabe bien cuándo comenzó todo. Lo cierto es que {P} fue quien se atrevió a preguntar.","Y así, sin saberlo, {P} caminó hacia {L}, donde todo habría de decidirse."];
+const CALL=["{P} intentó ignorarlo durante tres días. Al cuarto, tomó lo imprescindible y partió hacia {L}.","Cualquier persona sensata habría dejado {O} donde estaba. {P} no era esa persona: una mezcla de curiosidad y deuda le impedía darse la vuelta.","Habría querido que fuera otro quien recibiera aquello, pero ya no había vuelta atrás. {P} abandonó {H} y echó a andar hacia {L}."];
+const MEET=["De camino a {L}, {P} se topó con {A}, que conocía el terreno mejor que nadie. Al principio desconfiaron; al cabo de unos días ya se cubrían las espaldas.","{A} se cruzó en el camino de {P} en una posada y le ofreció su ayuda a cambio de la verdad. Nadie viajaba a {L} sin motivo, y {A} tenía el suyo.","{P} no pensaba aceptar compañía, pero {A} <la|lo> seguía a distancia desde {H}, y cuando por fin la alcanzó dijo algo que desarmó a {P}: «Yo también perdí a alguien por culpa de {O}»."];
+const THREAT=["Alguien más seguía el mismo rastro. {V} no se detenía, y tampoco decía qué buscaba.","Más de una vez notaron que {V} los observaba desde lejos, siempre un paso por detrás y siempre sonriendo.","{V} los precedía en cada paso, preguntando por {O} y dejando tras de sí miedo y silencio."];
+const DARK=["Todo se vino abajo. {P} perdió la fe en lo que creía saber y, lo que era peor, en sí mism<a|o>. Apartó a {A} de un empujón y se quedó a solas con el silencio.","La noche más larga llegó sin aviso. {P} recordó que {W}, y por un instante pensó en abandonar la búsqueda, como tantas veces antes.","{A} fue capturad[a|o] por los hombres de {V}, y {P} quedó sol<a|o> con {O} y con una elección imposible."];
+const DEC=["Al amanecer, {P} tomó una decisión: ya no huiría. Si {O} exigía un precio, lo pagaría de frente.","{P} se levantó, se sacudió el polvo y miró hacia {L}. Había llegado hasta allí y solo faltaba atravesar lo último."];
+const LESS=["En medio del caos, {P} entendió lo que llevaba tanto tiempo evitando: debía {les}.","De pronto lo vio claro: todo lo vivido tendría sentido si lograba {les}."];
+const AFTER=["La revelación cayó sobre {P} como una losa. Repasó cada momento del viaje buscando las señales que no había querido ver, y las encontró todas, una tras otra.","Durante un largo rato nadie dijo nada. Lo que {P} creía firme se había movido de sitio, y tocaba decidir si se quedaba en la duda o si la usaba como impulso.","{P} tardó en entender que nada había cambiado salvo lo que sabía. Y saberlo, por doloroso que fuera, era la única ventaja que le quedaba."];
+const RISK=["Al acercarse a {L}, el ambiente cambió. Los animales callaron y el aire se volvió pesado, como si el lugar supiera que venían. {P} dudó, pero siguió avanzando.","Una noche, alguien registró sus cosas mientras dormían. No faltaba nada salvo la calma: {V} ya sabía dónde estaban, y quién los acompañaba.","Tuvieron que cambiar de ruta tras perder el camino principal. El desvío les costó dos días y buena parte de sus provisiones, pero les enseñó algo sobre {L} que ningún mapa decía."];
+const BOND=["Esa noche, {A} preguntó qué cargaba {P} a la espalda. {P} tardó en responder, pero acabó confesando que {W}. {A} no juzgó; solo asintió, y ese silencio valió más que cualquier consejo.","Compartieron el poco alimento que tenían y algunas verdades a medias. {A} reconoció que había dudado de {P} al principio, y {P} admitió que le había pasado lo mismo. Fue la primera vez en mucho tiempo que rieron.","Durante varios días solo hubo camino, cansancio y conversaciones sueltas. Poco a poco {P} fue notando que, pese a su costumbre de ir por libre, ya no quería seguir sin {A}."];
+const ARRIVE=["{L} apareció al final de una última jornada de marcha. De cerca era más grande, más antiguo y más callado de lo que nadie había contado. {P} respiró hondo antes de cruzar el umbral.","Llegaron a {L} cuando la luz empezaba a faltar. Todo parecía en calma, y esa calma era precisamente lo que más inquietaba a {P}.","{L} los recibió sin ruido. Cada paso resonaba más de lo debido, y {P} tuvo la sensación de que alguien llevaba mucho tiempo esperando su llegada."];
+const PREP=["Planearon la entrada hasta el último detalle: quién cruzaría primero, qué señal usarían, qué harían si todo salía mal. Ninguno mencionó que casi seguro saldría mal.","Antes de seguir, {A} y {P} se detuvieron un instante. No hacían falta discursos; bastó una mirada para saber que, pasara lo que pasara, no lo afrontarían solos."];
+const CLOSE=["Y así terminó, o empezó, la historia de {P}. {H} la recordaría durante generaciones, aunque con otros nombres y algún detalle de más.","Quien pase hoy por {L} quizá no note nada. Pero {P} sabía lo que había allí, y a veces eso basta.","Dicen que {P} nunca volvió a hablar de {O}. Pero tampoco volvió a huir."];
+
+const GEN={
+fan:{n:"Fantasía",obj:["la corona de ceniza","el grimorio sin nombre","la espada que canta","el cristal del alba","el cuerno del último rey"],
+omen:["La noche en que nació {P}, las estrellas sobre {H} se apagaron una a una, y nadie volvió a mirar el cielo con la misma calma.","Antes de que existieran los reinos hubo un juramento, y {O} fue su único testigo. Los siglos olvidaron las palabras, pero no la deuda."],
+inc:["Una madrugada, un cuervo dejó sobre el alféizar de {P} {O}, todavía tibio, envuelto en un trapo con el nombre de {P} bordado en hilo rojo.","El día de feria, un anciano herido se desplomó ante {P} y le puso {O} entre las manos. «Llévate eso a {L}», susurró, «antes de que ellos lo huelan».","Tras una tormenta, {P} halló {O} bajo las raíces de un roble partido por un rayo. Al tocarlo, una voz pronunció su nombre desde ninguna parte."],
+obs:["El bosque del camino no figuraba en ningún mapa. Los árboles cambiaban de sitio al caer la tarde, y {P} y {A} solo lograron avanzar siguiendo a las luciérnagas.","Un puente custodiado por una criatura de ojos de ceniza les cerró el paso. Solo cedía ante quien dijese en voz alta una verdad nunca confesada, y {P} tuvo que hablar."],
+twi:["{V} no era un desconocido: había sido maestr«a|o» de {A}, y llevaba años guiando en secreto cada paso para que {P} abriera, sin saberlo, las puertas de {L}.","{A} lo confesó con la voz rota: había jurado lealtad a {V} a cambio de salvar a alguien querido, y ese juramento [la|lo] había llevado hasta {P}.","{O} no era un tesoro, sino una cerradura: el sello de una prisión antigua, y {V} necesitaba la sangre de {P} para romperla."],
+cli:["En lo alto de {L}, {V} alzó las manos y el aire se espesó como miel negra. {P} sostuvo {O} frente a sí, y el metal ardió en sus manos hasta arrancarle un grito.","Las puertas de {L} se abrieron solas. {V} esperaba dentro, con la calma de quien ya ha ganado. «Llegas tarde», dijo, «pero justo a tiempo»."],
+end:["{A} se interpuso entre {P} y el golpe final, y ese gesto bastó para romper el hechizo. {P} dejó caer {O}, y la prisión volvió a cerrarse con un estruendo de campanas.","{P} no empuñó {O} para destruirlo, sino para devolverlo a su lugar. {V} gritó e intentó retenerlo, pero la promesa antigua se cumplió al fin y su poder se deshizo como humo.","Cuando {V} tendió la mano para tomar {O}, {P} pronunció su nombre verdadero en voz alta. Nada más hizo falta: lo que fue tiranía quedó reducido a alguien cansado."],
+epi:["Años después, {H} celebraba cada primavera el día en que se cerraron las puertas de {L}. {P} no iba nunca a la fiesta; prefería recordarlo en silencio, con {O} guardado bajo llave.","Los cantores añadieron la historia a su repertorio, y cada uno le puso un final distinto. Solo {P} y {A} sabían cuál era el verdadero, y jamás lo contaron."]},
+sf:{n:"Ciencia ficción",obj:["el núcleo de datos","la baliza muda","el cristal de memoria","la semilla de silicio","el mapa estelar incompleto"],
+omen:["Cuando el cielo sobre {H} se partió en una línea de luz fría, los más viejos dijeron que algo había llegado de muy lejos, y que no venía solo.","Hubo un tiempo en que alguien dejó un mensaje para quien llegara después. Casi nadie quiso escucharlo, y por eso volvió a ocurrir."],
+inc:["Una noche, {O} se activó sin que nadie lo tocara y proyectó en la pared una ruta hacia {L}, parpadeando como un latido.","{P} encontró {O} entre los restos de algo que había caído del cielo. Estaba intacto y, al acercarse, emitió una frase en una lengua que {P} entendió sin haberla aprendido.","Un mensajero herido entregó {O} a {P} y murió antes de explicar por qué. A lo lejos se acercaban luces que no eran de {H}."],
+obs:["A medio camino, un campo de interferencias apagó todos los mecanismos. {P} y {A} avanzaron a ciegas, guiados solo por la vibración de {O}.","En {L}, las defensas seguían activas tras siglos. Un guardián de metal exigió una contraseña que nadie recordaba, y {P} la dedujo de una vieja canción de su gente."],
+twi:["{V} no buscaba conquistar nada: era custodi«a|o» de algo anterior a todos ellos, y creía que {O} debía permanecer cerrado para siempre.","{A} era una réplica: un cuerpo fabricado por {V} años atrás para vigilar a {P} desde la infancia. Y aun así, el afecto que {A} sentía era real.","El mensaje de {O} no pedía ayuda: advertía. Lo que dormía en {L} despertaría al abrirse, y {V} llevaba años intentando impedirlo."],
+cli:["En el corazón de {L}, {V} y {P} quedaron frente a frente, separados por una cuenta atrás. Cada segundo que {P} dudaba, el zumbido de {O} se volvía más agudo.","El centro de {L} se abrió como un ojo. {V} intentó arrebatar {O}, y {P} corrió hacia el panel central mientras las luces se apagaban una a una."],
+end:["{P} insertó {O} en el mecanismo y lo reprogramó con la última frase que quedaba en la memoria de {A}. El zumbido cesó, lo que dormía volvió a dormir, y {V} se rindió sin una palabra.","{P} no destruyó {O}: lo hizo público, para que nadie pudiera usarlo de nuevo en secreto. Así {V} perdió la única ventaja que le quedaba.","{A} sostuvo la compuerta con las pocas fuerzas que le quedaban, y ese esfuerzo compró los minutos necesarios. {P} selló {L} desde dentro y salió con {O} entre los brazos, ya sin vida."],
+epi:["Años después, {H} ya no miraba el cielo con miedo. {P} enseñaba a los niños a escuchar antes de temer, y en su mesa guardaba lo único que quedó de {O}: un fragmento que a veces, de madrugada, brillaba.","Del viaje quedaron los mapas, una amistad difícil de explicar y un silencio nuevo en el cielo. {P} volvió a {H}, y desde entonces {O} no volvió a encenderse."]},
+mis:{n:"Misterio",obj:["la carta sin remitente","el libro de cuentas","el relicario vacío","la llave de latón","el diario con páginas arrancadas"],
+omen:["La primera víctima de {H} no murió de un golpe, sino de miedo, y en su mano se halló un papel con un nombre que nadie conocía.","Todo comenzó con una desaparición que nadie quiso admitir, y con una promesa que se rompió demasiado pronto."],
+inc:["Una tarde, alguien dejó {O} sobre la mesa de {P}, sin nota ni mensajero. Junto a ello había un papel: «Pregunta por lo que pasó en {L}».","{P} examinaba los papeles de un difunto cuando halló tras una pared falsa {O}. Las fechas que lo rodeaban no coincidían con la historia oficial.","La noche del crimen, {P} vio a alguien alejarse de {L} con {O} bajo el brazo. Nadie más lo había visto, y nadie quiso creerlo."],
+obs:["Todos los testigos mentían, pero cada uno mentía en un punto distinto, y eso permitió a {P} reconstruir lo ocurrido. La coartada de {V} solo se sostenía con un reloj adelantado.","{P} siguió el rastro hasta {L} y halló la puerta forzada desde dentro, no desde fuera. Alguien había querido que pareciera un robo cuando en realidad era una despedida."],
+twi:["{O} no era una prueba, sino una trampa: {V} había preparado todo para que {P} acusara a un inocente y el verdadero culpable quedara libre.","{A} había mentido desde el primer día. No por maldad, sino porque la víctima era alguien a quien amaba, y buscaba al culpable por su cuenta.","El culpable no había huido: asistía cada día a la misma plaza, y era {V}. La víctima lo había descubierto, y {O} era la única prueba."],
+cli:["{P} reunió a todos en {L}, como en las viejas historias, y fue exponiendo los hechos uno a uno hasta que {V} dejó de sonreír. Un gesto, un tic en la mano, y {P} supo que tenía razón.","{V} acorraló a {P} en {L}, con {O} en una mano y una amenaza en la otra. Solo la verdad, dicha en el orden exacto, podía acabar con aquello."],
+end:["La confesión llegó sin gritos, casi como un alivio. {V} entregó {O} a la autoridad, y la verdad, por fin, ocupó el lugar de las versiones.","{A} cerró el expediente con sus propias manos y esa noche durmió sin pesadillas. La justicia fue más lenta que la verdad, pero llegó.","Nadie aplaudió. {A} se quedó junto a {P} en {L}, viendo cómo se llevaban a {V}, sabiendo que había terminado y que nada devolvería lo perdido."],
+epi:["Con los años, {P} dejó de resolver casos y empezó a enseñar a hacerlo. {O} quedó en un cajón, y algunas noches {P} lo abría, no por la verdad, sino por quienes la habían pagado.","{H} recuperó su rutina. Pero {P} había aprendido a mirar, y desde entonces notaba lo que los demás pasaban por alto: la tinta fresca, la pausa antes de una respuesta, el miedo bajo una sonrisa."]},
+ter:{n:"Terror",obj:["el espejo sin marco","la muñeca de cera","el reloj que no marca horas","el cuaderno de nanas","la campana rota"],
+omen:["Los vecinos de {H} aprendieron a no pronunciar ciertas palabras después del ocaso, y a no mirar hacia {L} cuando el viento cambiaba.","Hay lugares que recuerdan. Y hay objetos que, una vez tocados, nunca dejan de ser buscados."],
+inc:["{P} heredó {O} de un pariente al que nunca conoció. Desde la primera noche, algo empezó a moverse un paso por detrás de la sombra de {P}.","Al sacar {O} de un viejo baúl, {P} sintió el frío de quien es observado. Esa noche, la puerta del cuarto apareció abierta, y en el polvo había huellas pequeñas que no salían.","{O} aparecía cada mañana en un lugar distinto, aunque {P} cerraba la puerta con llave cada noche. A la tercera mañana había una nota: «Ya casi»."],
+obs:["Las ventanas de {L} daban a una habitación que no existía desde fuera. {P} cruzó el pasillo contando los pasos, y cada vez eran más, como si el edificio respirara.","Algo imitó la voz de {A} desde el otro lado de la puerta, pidiendo ayuda. {P} necesitó todo su valor para no abrir hasta oír la señal que habían acordado."],
+twi:["{V} no era un fantasma ni un monstruo: había sido la primera persona en tocar {O}, y llevaba siglos esperando a alguien que aceptara esa carga por voluntad propia.","{A} llevaba días sin proyectar sombra. {P} entendió por fin que había muerto en {L} la primera noche, y que seguía a su lado por pura obstinación.","Los sueños de {P} eran recuerdos ajenos: {V} los había sembrado para que {P} regresara a {L} por su propio pie, creyendo que huía de allí."],
+cli:["Las velas se apagaron a la vez. En la oscuridad de {L}, {V} se manifestó sin rostro, y {P} entendió que solo existía una manera de ganarle: no huir.","El suelo de {L} se abrió en grietas por donde subía un susurro. {P} apretó {O} contra el pecho y avanzó hacia donde todos sus instintos le gritaban que no fuera."],
+end:["{P} rompió {O} con sus propias manos, y un alarido sacudió los cimientos. Cuando todo terminó, {L} quedó en silencio, y era un silencio vacío, no habitado.","{A} pronunció al fin el nombre verdadero de {V}, y la oscuridad, como un animal viejo, se retiró. Nadie volvió a hablar de lo ocurrido, pero nadie volvió a dormir sin una luz.","{P} aceptó lo que {V} le ofrecía: quedarse. Pero lo hizo en sus propios términos, y selló {L} con su nombre para que el mal se quedara dentro."],
+epi:["Derribaron {L} en primavera. {P} guardó la última piedra en un cajón y, en las noches de viento, comprobaba que la puerta estuviera cerrada y la luz encendida.","Pasaron los años. Los niños de {H} contaban que a veces se oía un susurro, pero {P} sonreía al oírlo: sabía que ya no pedía, sino que se despedía."]},
+rom:{n:"Romance",obj:["la carta nunca enviada","el anillo de la abuela","el pañuelo bordado","el reloj de bolsillo","la partitura a medias"],
+omen:["Dicen en {H} que hay encuentros que ocurren por azar y otros que el destino lleva años preparando. Este fue de los segundos.","Se conocieron en un mal momento, que es como suelen empezar los mejores."],
+inc:["Una tarde de lluvia, {P} halló {O} sobre un banco, junto a unas iniciales que no eran las suyas. Decidió buscar a su dueño, y esa decisión le cambió la vida.","Entre los papeles de un familiar fallecido, {P} descubrió {O} y una dirección en {L}. Alguien allí aún esperaba una respuesta que nadie había enviado.","En una fiesta a la que no quería ir, alguien puso {O} en la mano de {P} por error y desapareció entre la gente. {P} pasó semanas buscando a su dueño."],
+obs:["Las familias de ambos llevaban años enemistadas por un motivo que ya nadie recordaba. Cada encuentro era un riesgo, y cada despedida, un pequeño duelo.","Una carta mal entregada, un malentendido, una promesa que no llegó a tiempo: el destino pareció empeñarse en separar a {P} y {A} con pequeños obstáculos."],
+twi:["{V} había interceptado durante años las cartas de {A}, y por eso {P} creyó que {A} nunca había querido responder.","{O} no pertenecía a {A}, sino a alguien a quien había amado antes de conocer a {P}, y esa verdad llegó cuando ya era imposible fingir indiferencia.","{A} debía partir al amanecer, y no se lo había dicho a {P} para no estropear los pocos días que les quedaban."],
+cli:["{P} corrió por {H} con {O} en la mano, buscando a {A} antes de que partiera. {V} le cerró el paso con una última amenaza: «Si lo alcanzas, lo perderás todo».","En {L}, bajo la luz de la tarde, {P} dijo por fin lo que llevaba tanto tiempo callando. {V} observaba desde lejos y, por primera vez, no hubo modo de impedirlo."],
+end:["{A} escuchó sin interrumpir. Al terminar no respondió con palabras: tomó las manos de {P} con {O} entre ambas, como quien sella un pacto.","No hubo escándalo ni gloria, solo una decisión: elegirse. {P} y {A} dejaron {H} juntos, y {V} se quedó con sus cartas y su silencio.","Los obstáculos no desaparecieron, pero dejaron de importar. {P} y {A} aprendieron que el amor no es la ausencia de miedo, sino la voluntad de atravesarlo."],
+epi:["Muchos años después, {O} seguía sobre la mesa de {P}, con las marcas de tantos dedos. Los nietos preguntaban por su historia, y {P} sonreía antes de contarla.","Cada aniversario volvían a {L}, y cada vez {P} y {A} descubrían algo nuevo el uno del otro. {O} se convirtió en la prueba de que lo imposible, a veces, ocurre."]}
+};
+const ERA={
+ant:{n:"Antigüedad",f:["Livia","Selene","Aspasia","Ismene","Neftis","Calíope"],m:["Tiberio","Nikias","Amón","Cleón","Darío","Aurelio"],home:["la ciudad portuaria junto al río","la aldea bajo el templo","una ciudad de murallas blancas"],site:["el templo enterrado","las canteras abandonadas","el laberinto del palacio viejo","la necrópolis del desierto"],roles:[["escriba","escriba"],["sacerdotisa","sacerdote"],["mercadera","mercader"],["soldado","soldado"],["alfarera","alfarero"],["médica","médico"],["astróloga","astrólogo"],["espía","espía"]],amb:["El sol caía a plomo sobre las calles y el aire olía a incienso y a pan recién horneado.","Las antorchas ardían en los pórticos y los mercaderes pregonaban su mercancía en tres lenguas.","Los dioses tenían nombre y cada familia tenía el suyo; nadie dejaba un altar sin ofrenda."]},
+med:{n:"Edad Media",f:["Isabel","Elvira","Blanca","Mencía","Aldara","Berenguela"],m:["Gonzalo","Rodrigo","Álvaro","Fernando","Ramiro","Tomás"],home:["la aldea al pie del castillo","la villa amurallada","el pueblo junto al monasterio"],site:["la torre en ruinas","el monasterio abandonado","las catacumbas bajo la catedral","el castillo del conde caído"],roles:[["herrera","herrero"],["copista","copista"],["curandera","curandero"],["juglaresa","juglar"],["escudera","escudero"],["tejedora","tejedor"],["monja","monje"],["cazadora","cazador"]],amb:["Las campanas marcaban las horas y el humo de las chimeneas subía recto en el aire frío.","Los caminos estaban embarrados y los rumores viajaban más rápido que los caballos.","En las noches de invierno la gente se apiñaba junto al fuego y contaba historias de lobos y de reyes."]},
+xix:{n:"Siglo XIX",f:["Adela","Eugenia","Clara","Amalia","Matilde","Casilda"],m:["Leopoldo","Augusto","Emilio","Ramón","Baltasar","Julián"],home:["la ciudad de las chimeneas","un pueblo ferroviario","el barrio viejo junto al puerto"],site:["la mansión de los condes","la estación abandonada","el observatorio de la colina","el teatro cerrado"],roles:[["institutriz","tutor"],["periodista","periodista"],["médica","médico"],["telegrafista","telegrafista"],["relojera","relojero"],["boticaria","boticario"],["fotógrafa","fotógrafo"],["maquinista","maquinista"]],amb:["Las farolas de gas teñían la niebla de amarillo y el tren pasaba cada hora con su silbido.","En los salones se hablaba de progreso, y en los callejones, de lo que el progreso dejaba atrás.","La lluvia golpeaba los tejados mientras el telégrafo traía, sin descanso, noticias que a nadie hacían bien."]},
+act:{n:"Actualidad",f:["Lucía","Camila","Paula","Marina","Irene","Valeria"],m:["Mateo","Diego","Andrés","Sergio","Nicolás","Pablo"],home:["la ciudad","un barrio de las afueras","un pueblo de montaña"],site:["la fábrica abandonada","la casa de la colina","el hospital cerrado","la vieja biblioteca"],roles:[["periodista","periodista"],["arquitecta","arquitecto"],["médica","médico"],["programadora","programador"],["detective","detective"],["fotógrafa","fotógrafo"],["profesora","profesor"],["chef","chef"]],amb:["El móvil vibraba sin descanso y la ciudad zumbaba bajo la luz de las pantallas.","Era una de esas noches de invierno en que el tráfico suena lejos y los pensamientos, cerca.","Las calles olían a café y a lluvia, y todo el mundo tenía prisa por llegar a ninguna parte."]},
+fut:{n:"Futuro lejano",f:["Nyx","Ilya","Sora","Vega","Zaira","Kyra"],m:["Orion","Kael","Dax","Ixon","Tarek","Soren"],home:["la estación orbital","la ciudad cúpula","una colonia en el borde del sistema"],site:["la nave abandonada","el núcleo del reactor viejo","las ruinas bajo el hielo","el archivo prohibido"],roles:[["navegante","navegante"],["ingeniera","ingeniero"],["hacker","hacker"],["xenobióloga","xenobiólogo"],["piloto","piloto"],["archivista","archivista"],["mecánica","mecánico"],["diplomática","diplomático"]],amb:["Los anillos de la estación giraban despacio y la luz artificial imitaba un atardecer que nadie recordaba.","Las naves iban y venían por los muelles mientras voces sintéticas anunciaban partidas.","Bajo la cúpula el aire era dulce y reciclado, y cada ciudadano llevaba un registro de sus pasos."]}
+};
+
+function rng(a){a>>>=0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const fin=t=>t.replace(/,\s*,/g,",").replace(/,\./g,".").replace(/(?<![\p{L}])de el(?![\p{L}])/gu,"del").replace(/(?<![\p{L}])a el(?![\p{L}])/gu,"al").replace(/(^|[.!?]\s+)([a-záéíóúñ])/g,(m,a,b)=>a+b.toUpperCase());
+
+function make(gk,ek,seed){
+ const r=rng(seed),g=GEN[gk],e=ERA[ek],sg=[];
+ const pk=a=>{const i=Math.floor(r()*a.length);sg.push(i);return a[i]};
+ const pf=r()<.5,af=r()<.5,vf=r()<.5;
+ const nm=(f,ex)=>pk((f?e.f:e.m).filter(n=>!ex.includes(n)));
+ const P=nm(pf,[]),A=nm(af,[P]),V=nm(vf,[P,A]);
+ const rs=[...e.roles],rl=()=>{const i=Math.floor(r()*rs.length);sg.push(i);return rs.splice(i,1)[0]};
+ const rp=rl(),ra=rl(),rv=rl(),bare=(p,f)=>p[f?0:1],art=f=>f?"una":"un";
+ const [W,les]=pk(WL);
+ const x={P,A,V,Rb:bare(rp,pf),R:art(pf)+" "+bare(rp,pf),O:pk(g.obj),L:pk(e.site),H:pk(e.home),W,les,AMB:pk(e.amb)};
+ let ia=0,iv=0;
+ const fill=t=>fin(t.replace(/<([^|<>]*)\|([^|<>]*)>/g,(m,a,b)=>pf?a:b).replace(/\[([^|\[\]]*)\|([^|\[\]]*)\]/g,(m,a,b)=>af?a:b).replace(/«([^|«»]*)\|([^|«»]*)»/g,(m,a,b)=>vf?a:b)
+  .replace(/\{(\w+)\}/g,(m,k)=>{
+   if(k==="A"&&!ia){ia=1;return `${A}, ${art(af)} ${bare(ra,af)},`}
+   if(k==="V"&&!iv){iv=1;return `${V}, ${art(vf)} ${bare(rv,vf)},`}
+   return x[k]}));
+ const T=pk(["{O}","Lo que {P} halló en {L}","Más allá de {L}","El secreto de {P}"]);
+ const title=fin(T.replace(/\{(\w+)\}/g,(m,k)=>x[k]));
+ const f=a=>fill(pk(a));
+ const oi=Math.floor(r()*2);sg.push(oi);const o1=[g.obs[oi]],o2=[g.obs[1-oi]];
+ const CH=[
+  [["Antes de todo","Lo que se cuenta en {H}"],[[g.omen,FORE],[INTRO]]],
+  [["{O}","Una llegada inesperada"],[[g.inc],[CALL]]],
+  [["Compañía","El rastro"],[[MEET],[THREAT]]],
+  [["Lo que no se dice","Noche de camino"],[[o1],[BOND]]],
+  [["Desvíos","El camino de {L}"],[[RISK],[o2]]],
+  [["La verdad","Lo que escondía {V}"],[[g.twi],[AFTER]]],
+  [["La noche más larga","Una decisión"],[[DARK,DEC]]],
+  [["Las puertas de {L}","Ante {L}"],[[ARRIVE],[PREP]]],
+  [["El enfrentamiento","Cara a cara"],[[g.cli,LESS]]],
+  [["Lo que quedó","Cuentas pendientes"],[[g.end]]],
+  [["Después","Lo que se recuerda"],[[g.epi,CLOSE]]]];
+ const secs=CH.map(([tt,paras])=>{const t=fin(pk(tt).replace(/\{(\w+)\}/g,(m,k)=>x[k]));return[t,paras.map(p=>p.map(f).join(" "))]});
+ return{title,meta:`${g.n}, ${e.n}`,secs,sig:gk+ek+sg.join(",")};
+}
+
+const $=s=>document.querySelector(s);
+const NARR={p:{n:"Primera persona"},t:{n:"Tercera persona"}},CRU={s:{n:"Suave"},i:{n:"Intenso"},c:{n:"Crudo"}},EXT={"40":{n:"40 páginas"},"50":{n:"50 páginas"},"60":{n:"60 páginas"}};
+const CRU_T={s:"Suave: lo violento ocurre fuera de cuadro o se sugiere; sin groserías; apto para adolescentes.",i:"Intensa: mucha tensión y algo de violencia descrita sin regodearse; lenguaje coloquial con alguna grosería ocasional.",c:"Cruda: violencia y horror con detalle físico, groserías naturales en boca de los personajes y consecuencias emocionales duras."};
+const STYLE=`- Detalles concretos y sensoriales (nombres propios, objetos cotidianos, olores, sonidos) en vez de abstracciones.
+- Alterna párrafos largos de acción con frases cortas, de una sola línea, que golpeen.
+- Mezcla en el momento de mayor tensión una observación inesperada o un toque de humor negro, y emociones reales entre los personajes.
+- Diálogos ágiles, naturales, a veces interrumpidos.
+- Siembra pistas y preguntas que se resuelven más adelante; reflexiones breves del narrador que den profundidad.
+- No repitas muletillas, estructuras de frase ni comparaciones ya usadas.`;
+function chips(id,obj,name,def){$(id).innerHTML=Object.entries(obj).map(([k,v])=>`<input type="radio" name="${name}" id="${name}-${k}" value="${k}"${k===def?" checked":""}><label for="${name}-${k}">${v.n}</label>`).join("")}
+chips("#gen",GEN,"g","fan");chips("#era",ERA,"e","med");chips("#nar",NARR,"n","p");chips("#cru",CRU,"c","i");chips("#ext",EXT,"x","50");
+const val=n=>document.querySelector(`input[name=${n}]:checked`).value;
+const esc=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+const paras=t=>t.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const seen=new Set();let cur=null,busy=false,ctl=null,SM=null,DL=null,tt;
+(async()=>{try{SM=await window.claude?.use("sample")}catch(_){}try{DL=await window.claude?.use("downloads")}catch(_){}})();
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("on"),3000)}
+const prog=m=>{const p=$("#prog");if(p)p.textContent=m};
+$("#out").innerHTML='<p class="empty">Tu historia aparecerá aquí.</p>';
+
+function frame(s){
+ $("#out").innerHTML=`<h2 class="t">${esc(s.title)}</h2><p class="meta">${esc(s.meta)}</p>
+ <div class="tools"><button data-a="docx" disabled>Descargar Word</button><button data-a="pdf" disabled>Descargar PDF</button><button data-a="stop">Detener</button></div><p class="prog" id="prog"></p>`+
+ s.secs.map(([n],i)=>`<section class="sec" id="ch${i}" hidden><h3><span>Capítulo ${i+1}</span>${esc(n)}</h3><div></div></section>`).join("");
+}
+function setCh(i,ps){const e=$("#ch"+i);e.hidden=false;e.querySelector("div").innerHTML=ps.map(p=>`<p>${esc(p)}</p>`).join("")}
+function enable(){document.querySelectorAll("[data-a=docx],[data-a=pdf]").forEach(b=>b.disabled=false)}
+function endUi(){busy=false;$("#go").disabled=false;const b=document.querySelector("[data-a=stop]");if(b)b.hidden=true}
+
+function prompt(s,i,o,sums,opens,tail){
+ const N=s.secs.length,last=i===N-1,words=Math.round(o.pages*300/N);
+ const guion=s.secs.map(([n,ps],k)=>`${k+1}. ${n}${k===i?"  <-- ESTE CAPÍTULO":""}\n${ps.join(" ")}`).join("\n\n");
+ return `Eres un novelista. Escribes una historia (${s.meta}) de unas ${o.pages} páginas dividida en ${N} capítulos. Ahora escribes el capítulo ${i+1} de ${N}: «${s.secs[i][0]}».
+
+NARRADOR: ${o.n==="p"?"primera persona, con la voz del protagonista (puede abrir un narrador mayor que recuerda, si encaja)":"tercera persona cercana al protagonista, en pasado"}.
+CRUDEZA: ${CRU_T[o.c]} Nunca incluyas contenido sexual explícito.
+
+GUION COMPLETO (hechos, nombres y giros; NO copies sus frases: dramatiza con escenas, diálogos, detalles y emociones nuevas):
+${guion}
+
+${sums.length?`LO YA ESCRITO (no repitas escenas, imágenes, chistes ni comparaciones):\n${sums.join("\n")}\nAperturas ya usadas (abre de otro modo):\n${opens.join("\n")}\nFinal del capítulo anterior (continúa desde ahí sin repetirlo):\n${tail}`:"Es el primer capítulo: abre con una primera línea que enganche de inmediato."}
+
+TÉCNICA DE ESTILO:
+${STYLE}
+
+FORMATO: escribe SOLO el texto del capítulo, sin título ni número, en párrafos separados por una línea en blanco. Diálogos con raya (—). Extensión: unas ${words} palabras. ${last?"Es el capítulo final: cierra todos los hilos y termina con un giro o una imagen que cambie cómo se entiende lo anterior.":"Termina con un gancho que empuje a leer el siguiente capítulo."} Después del texto, en una línea nueva, escribe: RESUMEN: dos frases con lo ocurrido y las imágenes o recursos clave que usaste.`;
+}
+
+async function run(){
+ if(busy)return;
+ const o={g:val("g"),e:val("e"),n:val("n"),c:val("c"),pages:+val("x")};
+ let seed=Math.floor(Math.random()*1e9),s;
+ for(let k=0;k<30;k++){s=make(o.g,o.e,seed+k);if(!seen.has(s.sig))break}
+ seen.add(s.sig);
+ const meta=`${s.meta}, ${o.n==="p"?"primera persona":"tercera persona"}`;
+ cur={title:s.title,meta,secs:s.secs.map(([n])=>[n,[]])};
+ frame(cur);$("#out").scrollIntoView({block:"start"});
+ if(!SM){s.secs.forEach(([n,ps],i)=>{cur.secs[i][1]=ps;setCh(i,ps)});enable();prog("Versión breve: la escritura con Claude no está disponible en este visor.");endUi();document.querySelector("[data-a=stop]").hidden=true;return}
+ busy=true;ctl=new AbortController();$("#go").disabled=true;
+ const sums=[],opens=[];let tail="",i=0;
+ try{
+  for(;i<s.secs.length;i++){
+   prog(`Escribiendo capítulo ${i+1} de ${s.secs.length}…`);
+   let txt="",tries=0;
+   while(true){
+    try{
+     const r=await SM(prompt(s,i,o,sums,opens,tail),{signal:ctl.signal,cache:false,modelTier:"default",onText:({text})=>setCh(i,paras(text.split(/\n\s*RESUMEN:/i)[0]))});
+     txt=r.text;break;
+    }catch(e){if(e&&e.code==="rate_limited"&&tries++<3){prog("Esperando un momento…");await sleep(10000);continue}throw e}
+   }
+   const [body,res]=txt.split(/\n\s*RESUMEN:/i),ps=paras(body);
+   cur.secs[i][1]=ps;setCh(i,ps);enable();
+   sums.push(`Cap. ${i+1} «${s.secs[i][0]}»: ${(res||"").trim()}`);
+   opens.push("- "+ps[0].slice(0,120));tail=body.trim().slice(-700);
+  }
+  prog("Historia terminada.");
+ }catch(e){
+  const el=$("#ch"+i);if(el&&!cur.secs[i][1].length)el.hidden=true;
+  if(ctl.signal.aborted)prog("Detenido. Puedes descargar lo escrito hasta ahora.");
+  else if(e&&e.code==="not_granted"){prog("Hace falta tu permiso para que Claude escriba la historia.")}
+  else prog("Se interrumpió la escritura. Puedes descargar lo escrito hasta ahora.");
+ }
+ endUi();
+}
+
+const X=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+async function mkDocx(s){
+ const P=(t,o={})=>`<w:p><w:pPr>${o.pb?"<w:pageBreakBefore/>":""}<w:spacing w:before="${o.b||0}" w:after="${o.a??120}" w:line="340" w:lineRule="auto"/>${o.ind?'<w:ind w:firstLine="360"/>':""}<w:jc w:val="${o.j||"both"}"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/>${o.bold?"<w:b/>":""}${o.i?"<w:i/>":""}<w:sz w:val="${o.sz||23}"/></w:rPr><w:t xml:space="preserve">${X(t)}</w:t></w:r></w:p>`;
+ let b=P(s.title,{sz:52,bold:1,j:"center",b:3200,a:240})+P(s.meta,{sz:24,i:1,j:"center"});
+ s.secs.filter(c=>c[1].length).forEach(([n,ps],i)=>{b+=P(`Capítulo ${i+1}`,{pb:1,sz:20,i:1,j:"center",b:900,a:60})+P(n,{sz:34,bold:1,j:"center",a:360})+ps.map(p=>P(p,{ind:1})).join("")});
+ const Z=new JSZip(),H='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+ Z.file("[Content_Types].xml",H+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+ Z.file("_rels/.rels",H+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+ Z.file("word/document.xml",H+'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+b+'<w:sectPr><w:pgSz w:w="8392" w:h="11906"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>');
+ return Z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+function mkPdf(s){
+ const d=new window.jspdf.jsPDF({unit:"mm",format:"a5"}),W=148,Hh=210,M=18,tw=W-2*M;let y;
+ d.setFont("times","bold");d.setFontSize(26);const tl=d.splitTextToSize(s.title,tw);d.text(tl,W/2,70,{align:"center"});
+ d.setFont("times","italic");d.setFontSize(12);d.text(s.meta,W/2,78+tl.length*11,{align:"center"});
+ s.secs.filter(c=>c[1].length).forEach(([n,ps],i)=>{
+  d.addPage();d.setFont("times","italic");d.setFontSize(10);d.text(`Capítulo ${i+1}`,W/2,38,{align:"center"});
+  d.setFont("times","bold");d.setFontSize(18);const t=d.splitTextToSize(n,tw);d.text(t,W/2,48,{align:"center"});
+  y=50+t.length*8+10;d.setFont("times","normal");d.setFontSize(11);
+  ps.forEach(p=>{d.splitTextToSize(p,tw).forEach(l=>{if(y>Hh-M){d.addPage();y=M+4}d.text(l,M,y);y+=5.2});y+=1.8});
+ });
+ const n=d.getNumberOfPages();for(let k=2;k<=n;k++){d.setPage(k);d.setFont("times","normal");d.setFontSize(9);d.text(String(k-1),W/2,Hh-9,{align:"center"})}
+ return d.output("blob");
+}
+$("#go").onclick=run;
+$("#out").onclick=async ev=>{
+ const a=ev.target.dataset&&ev.target.dataset.a;if(!a)return;
+ if(a==="stop"){ctl&&ctl.abort();return}
+ if(!cur)return;
+ if(!DL){toast("La descarga no está disponible en este visor");return}
+ const slug=cur.title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"historia";
+ try{
+  if(a==="docx"){if(typeof JSZip==="undefined")throw 0;await DL.save({filename:slug+".docx",data:await mkDocx(cur)})}
+  else{if(!window.jspdf)throw 0;await DL.save({filename:slug+".pdf",data:mkPdf(cur)})}
+  toast("Descarga lista");
+ }catch(err){if(!err||err.code!=="declined")toast("No se pudo completar la descarga")}
+};
+</script>
+</body>
+</html>
